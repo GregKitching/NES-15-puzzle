@@ -264,7 +264,6 @@ setoamcopy:
 ;$10: position of hole
 ;$11: x position of cursor ($00 - $03)
 ;$12: y position of cursor ($00 - $03)
-;$13: >$00 = control input disabled
 
 initvars:
   lda #13
@@ -305,10 +304,34 @@ initvars:
   sta $0313
   rts
 
+test:
+  lda #$21
+  sta $10
+  sta $12
+  lda #$50
+  sta $11
+  lda #$90
+  sta $13
+  lda #$08
+  sta $14
+  lda #$24
+  sta $15
+  lda #$d4
+  sta $16
+  lda #$dc
+  sta $17
+  lda #%10100000
+  sta $18
+  lda #%10010110
+  sta $19
+  sta $1a
+  rts
+
 start:
   jsr clearoamcopy
   jsr setoamcopy
   jsr initvars
+  jsr test
   lda $00; set scroll
   sta $2005
   sta $2005
@@ -321,7 +344,7 @@ start:
   ;sta $0312
   ;jsr movecursor
 loop:
-  lda $0313
+  lda $1a
   bne loop
   jsr readcontroller
   jsr readcontroller; Read controller twice due to DPCM conflict (not using DPCM right now, but good practice)
@@ -414,12 +437,84 @@ div2:
   ror a
   rts
 
+;swaptiles:
+;  lda $14
+
 nmi:
   bit $2002
   lda #$00
   sta $2003
   lda #$02
   sta $4014
+  lda $1a
+  beq skiptileswap
+;tile swapping routine
+  lda $10; X = tile number, Y = lsb of nametable address
+  sta $2006
+  lda $11
+  tay
+  sta $2006
+  ldx $14
+  stx $2007
+  inx
+  stx $2007
+  txa
+  clc
+  adc #$0f
+  tax
+  tya
+  clc
+  adc #$20
+  tay
+  lda $10
+  sta $2006
+  sty $2006
+  stx $2007
+  inx
+  stx $2007
+;second tile
+  lda $12;
+  sta $2006
+  lda $13
+  tay
+  sta $2006
+  ldx $15
+  stx $2007
+  inx
+  stx $2007
+  txa
+  clc
+  adc #$0f
+  tax
+  tya
+  clc
+  adc #$20
+  tay
+  lda $12
+  sta $2006
+  sty $2006
+  stx $2007
+  inx
+  stx $2007
+;first attribute table entry
+  lda #$23
+  ldx $16
+  ldy $18
+  sta $2006
+  stx $2006
+  sty $2007
+;second attribute table entry
+  ldx $17
+  ldy $19
+  sta $2006
+  stx $2006
+  sty $2007
+  lda #$00; Reset scroll register due to shared internal register with $2006
+  sta $2005
+  sta $2005
+skiptileswap:
+  lda #$00
+  sta $1a; Clear input lock
   rti
 
 irq:
