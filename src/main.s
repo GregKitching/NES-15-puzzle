@@ -437,9 +437,6 @@ div2:
   ror a
   rts
 
-;swaptiles:
-;  lda $14
-
 nmi:
   bit $2002
   lda #$00
