@@ -264,6 +264,7 @@ setoamcopy:
 ;$10: position of hole
 ;$11: x position of cursor ($00 - $03)
 ;$12: y position of cursor ($00 - $03)
+;$13: button pressed flag
 
 initvars:
   lda #13
@@ -300,8 +301,11 @@ initvars:
   lda #0
   sta $030f
   sta $0311
+  sta $0312
   sta $10
   sta $0313
+  sta $02
+  sta $1a
   rts
 
 test:
@@ -331,7 +335,7 @@ start:
   jsr clearoamcopy
   jsr setoamcopy
   jsr initvars
-  jsr test
+  ;jsr test
   lda $00; set scroll
   sta $2005
   sta $2005
@@ -339,16 +343,34 @@ start:
   sta $2000
   lda #%00011110; Show background and sprites
   sta $2001
-  ;lda #$01
-  ;sta $0311
-  ;sta $0312
-  ;jsr movecursor
 loop:
   lda $1a
   bne loop
-  jsr readcontroller
-  jsr readcontroller; Read controller twice due to DPCM conflict (not using DPCM right now, but good practice)
-  ;Game logic goes here
+  :jsr readcontroller
+  lda $02
+  sta $03
+  jsr readcontroller; Read controller twice and compare due to DPCM conflict (not using DPCM right now, but good practice)
+  lda $02
+  cmp $03
+  bne :-
+  lda $02
+  tax
+  and #$01
+  bne buttonright
+  txa
+  and #$02
+  bne buttonleft
+  txa
+  and #$04
+  bne buttondown
+  txa
+  and #$08
+  bne buttonup
+  txa
+  and #$80
+  ;bne buttona
+  lda #$00
+  sta $0313
   jmp loop
 
 readcontroller:; Adapted from https://www.nesdev.org/wiki/Controller_reading_code
@@ -365,6 +387,52 @@ readcontroller:; Adapted from https://www.nesdev.org/wiki/Controller_reading_cod
 
 ; Button assignment:	7   6     5        4     3     2      1      0
 ;			A | B | Select | Start | Up | Down | Left | Right
+
+buttonright:
+  lda $0313
+  bne :+; abort if disable input is set
+  lda $0311
+  cmp #$03
+  bcs :+; abort if xpos >= #$03
+  inc $0311
+  lda #$01
+  sta $0313
+  jsr movecursor
+  :jmp loop
+
+buttonleft:
+  lda $0313
+  bne :+
+  lda $0311
+  beq :+
+  dec $0311
+  lda #$01
+  sta $0313
+  jsr movecursor
+  :jmp loop
+
+buttondown:
+  lda $0313
+  bne :+
+  lda $0312
+  cmp #$03
+  bcs :+
+  inc $0312
+  lda #$01
+  sta $0313
+  jsr movecursor
+  :jmp loop
+
+buttonup:
+  lda $0313
+  bne :+
+  lda $0312
+  beq :+
+  dec $0312
+  lda #$01
+  sta $0313
+  jsr movecursor
+  :jmp loop
 
 getarrayindex:; For translating cursor x and y position into an index into the 1d array, store result in A
   lda $0312
@@ -438,6 +506,12 @@ div2:
   rts
 
 nmi:
+  php
+  pha
+  txa
+  pha
+  tya
+  pha
   bit $2002
   lda #$00
   sta $2003
@@ -512,6 +586,12 @@ nmi:
 skiptileswap:
   lda #$00
   sta $1a; Clear input lock
+  pla
+  tay
+  pla
+  tax
+  pla
+  plp
   rti
 
 irq:
