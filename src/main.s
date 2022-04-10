@@ -249,6 +249,11 @@ setoamcopy:
 
 ;Variables
 ;zero page
+;$00-$01: temp
+;$02-$03: controller input
+;$04-$05: temp variables for buttona routine
+;$06-$07: array indices in $0300 of blocks to swap
+;$08-$09: the numbers those blocks actually contain
 ;$10-$11: Nametable address of first block to swap
 ;$12-$13: Nametable address of second block to swap
 ;$14: Character to be swapped into first block
@@ -261,10 +266,11 @@ setoamcopy:
 
 ;page $03
 ;$00 - 0f: tile number at position on board (row-major) (hole = 0)
-;$10: position of hole
-;$11: x position of cursor ($00 - $03)
-;$12: y position of cursor ($00 - $03)
-;$13: button pressed flag
+;$10: x position of hole
+;$11: y position of hole
+;$12: x position of cursor ($00 - $03)
+;$13: y position of cursor ($00 - $03)
+;$14: button pressed flag
 
 initvars:
   lda #13
@@ -275,6 +281,8 @@ initvars:
   sta $0302
   lda #3
   sta $0303
+  sta $0310
+  sta $0311
   lda #1
   sta $0304
   lda #12
@@ -293,19 +301,22 @@ initvars:
   sta $030b
   lda #15
   sta $030c
-  sta $0310
   lda #14
   sta $030d
   lda #11
   sta $030e
   lda #0
   sta $030f
-  sta $0311
   sta $0312
-  sta $10
   sta $0313
+  sta $10
+  sta $0314
   sta $02
   sta $1a
+  lda #15
+  jsr gethole2dindex
+  stx $0310
+  sty $0311
   rts
 
 test:
@@ -346,7 +357,7 @@ start:
 loop:
   lda $1a
   bne loop
-  :jsr readcontroller
+: jsr readcontroller
   lda $02
   sta $03
   jsr readcontroller; Read controller twice and compare due to DPCM conflict (not using DPCM right now, but good practice)
@@ -356,21 +367,26 @@ loop:
   lda $02
   tax
   and #$01
-  bne buttonright
-  txa
+  beq :+
+  jmp buttonright
+: txa
   and #$02
-  bne buttonleft
-  txa
+  beq :+
+  jmp buttonleft
+: txa
   and #$04
-  bne buttondown
-  txa
+  beq :+
+  jmp buttondown
+: txa
   and #$08
-  bne buttonup
-  txa
+  beq :+
+  jmp buttonup
+: txa
   and #$80
-  ;bne buttona
-  lda #$00
-  sta $0313
+  beq :+
+  jmp buttona
+: lda #$00
+  sta $0314
   jmp loop
 
 readcontroller:; Adapted from https://www.nesdev.org/wiki/Controller_reading_code
@@ -389,63 +405,197 @@ readcontroller:; Adapted from https://www.nesdev.org/wiki/Controller_reading_cod
 ;			A | B | Select | Start | Up | Down | Left | Right
 
 buttonright:
-  lda $0313
+  lda $0314
   bne :+; abort if disable input is set
-  lda $0311
+  lda $0312
   cmp #$03
   bcs :+; abort if xpos >= #$03
-  inc $0311
+  inc $0312
   lda #$01
-  sta $0313
+  sta $0314
   jsr movecursor
   :jmp loop
 
 buttonleft:
-  lda $0313
-  bne :+
-  lda $0311
-  beq :+
-  dec $0311
-  lda #$01
-  sta $0313
-  jsr movecursor
-  :jmp loop
-
-buttondown:
-  lda $0313
-  bne :+
-  lda $0312
-  cmp #$03
-  bcs :+
-  inc $0312
-  lda #$01
-  sta $0313
-  jsr movecursor
-  :jmp loop
-
-buttonup:
-  lda $0313
+  lda $0314
   bne :+
   lda $0312
   beq :+
   dec $0312
   lda #$01
-  sta $0313
+  sta $0314
   jsr movecursor
   :jmp loop
 
-getarrayindex:; For translating cursor x and y position into an index into the 1d array, store result in A
+buttondown:
+  lda $0314
+  bne :+
+  lda $0313
+  cmp #$03
+  bcs :+
+  inc $0313
+  lda #$01
+  sta $0314
+  jsr movecursor
+  :jmp loop
+
+buttonup:
+  lda $0314
+  bne :+
+  lda $0313
+  beq :+
+  dec $0313
+  lda #$01
+  sta $0314
+  jsr movecursor
+  :jmp loop
+
+buttona:
+; if $0312 - $0310 == #$00
+;   if $0313 - $0311 == #$01
+;     hole is above cursor
+;   else if $0313 - $0311 == #$ff
+;     hole is below cursor
+;   else
+;     do nothing
+; else if $0312 - $0310 == #$01
+;   if $0313 - $0311 == #$00
+;     hole is to the left of cursor
+;   else
+;     do nothing
+; else if $0312 - $0310 == #$ff
+;   if $0313 - $0311 == #$00
+;     hole is to the right of cursor
+;   else
+;     do nothing
+; else
+;   do nothing
   lda $0312
+  sec
+  sbc $0310
+  sta $04
+  lda $0313
+  sec
+  sbc $0311
+  sta $05
+  lda $04
+  bne xnotzero
+  lda $05
+  cmp #$01
+  bne ynotone
+  jmp swaphole
+ynotone:
+  cmp #$ff
+  bne exit
+  jmp swaphole
+xnotzero:
+  cmp #$01
+  bne xnotone
+  lda $05
+  bne exit
+  jmp swaphole
+xnotone:
+  cmp #$ff
+  bne exit
+  lda $05
+  bne exit
+  jmp swaphole
+exit:
+  jmp loop
+
+swaphole:
+  jsr getarrayindexcursor
+  sta $06
+  tax
+;swap numbers in $0300 array
+  lda $0300, x
+  sta $08
+  jsr getarrayindexhole
+  sta $07
+  tax
+  lda $0300, x
+  sta $09
+  ldx $06
+  sta $0300, x
+  lda $08
+  ldx $07
+  sta $0300, x
+;swap blocks in nametable
+  lda $06
+  tax
+  jsr getnametableaddressmsb
+  sta $10
+  lda nametableaddresslsb, x
+  sta $11
+  lda $07
+  tax
+  jsr getnametableaddressmsb
+  sta $12
+  lda nametableaddresslsb, x
+  sta $13
+  lda #$2e
+  sta $14
+  ldx $08
+  lda charpos, x
+  sta $15
+  lda $0312; update position of hole
+  sta $0310
+  lda $0313
+  sta $0311
+  lda #$01
+  sta $1a
+  jmp loop
+
+getarrayindexcursor:; For translating cursor x and y position into an index into the 1d array, store result in A
+  lda $0313
   jsr mul4
-  ora $0311
+  ora $0312
   rts
 
-movecursor:
+getarrayindexhole:
   lda $0311
+  jsr mul4
+  ora $0310
+  rts
+
+gethole2dindex:; Inverse of getarrayindex; have index in A, x pos -> X, y pos -> Y
+  tay
+  and #$03
+  tax
+  tya
+  lsr
+  lsr
+  and #$03
+  tay
+  rts
+
+getnametableaddressmsb:
+; $214c | $214e | $2150 | $2152
+;-------+-------+-------+-------
+; $218c | $218e | $2190 | $2192
+;-------+-------+-------+-------
+; $21cc | $21ce | $21d0 | $21d2
+;-------+-------+-------+-------
+; $220c | $220e | $2210 | $2212
+  cmp #$0c
+  bcc :+
+  lda #$22
+  rts
+ :lda #$21
+  rts
+
+nametableaddresslsb:
+.byte $4c, $4e, $50, $52, $8c, $8e, $90, $92, $cc, $ce, $d0, $d2, $0c, $0e, $10, $12
+
+charpos:
+.byte $2e, $00, $02, $04, $06, $08, $0a, $0c, $0e, $20, $22, $24, $26, $28, $2a, $2c
+
+movecursor:
+  lda $0312
   jsr mul16
   adc #88
   tax
-  lda $0312
+  lda $0313
   jsr mul16
   adc #71
   tay
