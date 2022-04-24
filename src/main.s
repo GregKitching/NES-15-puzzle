@@ -220,10 +220,10 @@ clearoamcopy:
   rts
 
 setoamcopy:
-  lda #71
+  lda #87;#71
   sta $0204; Sprite 1 (save sprite 0 for potential sprite 0 hit functionality)
   sta $0208; Sprite 2
-  lda #95
+  lda #111;#95
   sta $020c; Sprite 3
   sta $0210; Sprite 4
   lda #$44
@@ -258,6 +258,7 @@ setoamcopy:
 ;$12-$13: Nametable address of second block to swap
 ;$14: Character to be swapped into first block
 ;$15: Character to be swapped into second block
+;$16-$19: Copy of $23db, $23dc, $23e3, and $23e4 in nametable
 ;$16: lsB of first attribute table entry to be changed
 ;$17: lsB of second attribute table entry to be changed
 ;$18: new value of first attribute table entry
@@ -313,6 +314,18 @@ initvars:
   sta $0314
   sta $02
   sta $1a
+  ldx #$db
+  lda $8300, x
+  sta $16
+  inx
+  lda $8300, x
+  sta $17
+  ldx #$e3
+  lda $8300, x
+  sta $18
+  inx
+  lda $8300, x
+  sta $19
   lda #15
   jsr gethole2dindex
   stx $0310
@@ -521,18 +534,16 @@ swaphole:
   ldx $07
   sta $0300, x
 ;swap blocks in nametable
-  lda $06
-  tax
-  jsr getnametableaddressmsb
-  sta $10
+  ldx $06
   lda nametableaddresslsb, x
   sta $11
-  lda $07
-  tax
   jsr getnametableaddressmsb
-  sta $12
+  sta $10
+  ldx $07
   lda nametableaddresslsb, x
   sta $13
+  jsr getnametableaddressmsb
+  sta $12
   lda #$2e
   sta $14
   ldx $08
@@ -542,9 +553,204 @@ swaphole:
   sta $0310
   lda $0313
   sta $0311
-  lda #$01
+  jsr swapattributetables
+  lda #$01; set swap flag
   sta $1a
   jmp loop
+
+;$00 -> $16 xxxxxx..
+;$01 -> $16 xxxx..xx
+;$02 -> $17 xxxxxx..
+;$03 -> $17 xxxx..xx
+;$04 -> $16 xx..xxxx
+;$05 -> $16 ..xxxxxx
+;$06 -> $17 xx..xxxx
+;$07 -> $17 ..xxxxxx
+;$08 -> $18 xxxxxx..
+;$09 -> $18 xxxx..xx
+;$0a -> $19 xxxxxx..
+;$0b -> $19 xxxx..xx
+;$0c -> $18 xx..xxxx
+;$0d -> $18 ..xxxxxx
+;$0e -> $19 xx..xxxx
+;$0f -> $19 ..xxxxxx
+
+; x | x | x | x | position bit 1 | 0 = xxxx.... | position bit 0 | 0 = xx..xx..
+;                                  1 = ....xxxx                    1 = ..xx..xx
+
+;$20: Position of first attribute to be changed
+;$21: Position of second attribute to be changed
+;$22: Position of bits in first attribute         00 = xxxxxx.. | 01 = xxxx..xx | 10 = xx..xxxx | 11 = ..xxxxxx
+;$23: Position of bits in second attribute
+;$24: Temp
+
+swapattributetables:
+  ldx #$00
+  jsr findattributeentry
+  jsr findbyteposition
+  inx
+  jsr findattributeentry
+  jsr findbyteposition
+  ldx $20
+  lda $16, x
+  ldy $22
+  bne :+
+  and #%00000011
+  jmp cont
+ :dey
+  bne :+
+  and #%00001100
+  jsr div4
+  jmp cont
+ :dey
+  bne :+
+  and #%00110000
+  jsr div16
+  jmp cont
+ :and #%11000000
+  jsr div64
+cont:
+  sta $24
+  ldx $21
+  lda $16, x
+  ldy $23
+  bne :+
+  and #%00000011
+  jmp cont2
+ :dey
+  bne :+
+  and #%00001100
+  jsr div4
+  jmp cont2
+ :dey
+  bne :+
+  and #%00110000
+  jsr div16
+  jmp cont2
+ :and #%11000000
+  jsr div64
+cont2:
+  sta $25
+  ldx $20
+  lda $16, x
+  ldy $22
+  bne :+
+  and #%11111100
+  ora $25
+  jmp cont3
+ :dey
+  bne :+
+  and #%11110011
+  clc
+  rol $25
+  rol $25
+  ora $25
+  jmp cont3
+ :dey
+  bne :+
+  and #%11001111
+  clc
+  rol $25
+  rol $25
+  rol $25
+  rol $25
+  ora $25
+  jmp cont3
+ :and #%00111111
+  clc
+  rol $25
+  rol $25
+  rol $25
+  rol $25
+  rol $25
+  rol $25
+  ora $25
+cont3:
+  sta $16, x
+  ldx $21
+  lda $16, x
+  ldy $23
+  bne :+
+  and #%11111100
+  ora $24
+  jmp cont4
+ :dey
+  bne :+
+  and #%11110011
+  clc
+  rol $24
+  rol $24
+  ora $24
+  jmp cont4
+ :dey
+  bne :+
+  and #%11001111
+  clc
+  rol $24
+  rol $24
+  rol $24
+  rol $24
+  ora $24
+  jmp cont4
+ :and #%00111111
+  clc
+  rol $24
+  rol $24
+  rol $24
+  rol $24
+  rol $24
+  rol $24
+  ora $24
+cont4:
+  sta $16, x
+  rts
+
+;findattributelsb:
+;  lda $06, x
+;  jsr mul32; shift left by five
+;  bcs ezero
+;  lda #$d0
+;  sta $16, x
+;  jsr mul4
+;  bcs :+
+;  lda $16, x
+;  ora #$0b
+;  sta $16, x
+;  rts
+; :lda $16, x
+;  ora #$0c
+;  sta $16, x
+;  rts
+;ezero:
+;  lda #$e0
+;  sta $16, x
+;  jsr mul4
+;  bcs :+
+;  lda $16, x
+;  ora #$03
+;  sta $16, x
+;  rts
+; :lda $16, x
+;  ora #$04
+;  sta $16, x
+;  rts
+
+findattributeentry:
+  lda $06, x
+  and #%00001010
+  lsr a
+  lsr a
+  adc #$00; increment A by one if a 1 was shifted into carry
+  sta $20, x
+  rts
+
+findbyteposition:
+  lda $06, x
+  and #%00000101
+  lsr a
+  adc #$00
+  sta $22, x
+  rts
 
 getarrayindexcursor:; For translating cursor x and y position into an index into the 1d array, store result in A
   lda $0313
@@ -570,22 +776,22 @@ gethole2dindex:; Inverse of getarrayindex; have index in A, x pos -> X, y pos ->
   rts
 
 getnametableaddressmsb:
-; $214c | $214e | $2150 | $2152
-;-------+-------+-------+-------
 ; $218c | $218e | $2190 | $2192
 ;-------+-------+-------+-------
 ; $21cc | $21ce | $21d0 | $21d2
 ;-------+-------+-------+-------
 ; $220c | $220e | $2210 | $2212
-  cmp #$0c
-  bcc :+
+;-------+-------+-------+-------
+; $224c | $224e | $2250 | $2252
+  cmp #$80
+  bcs :+
   lda #$22
   rts
  :lda #$21
   rts
 
 nametableaddresslsb:
-.byte $4c, $4e, $50, $52, $8c, $8e, $90, $92, $cc, $ce, $d0, $d2, $0c, $0e, $10, $12
+.byte $8c, $8e, $90, $92, $cc, $ce, $d0, $d2, $0c, $0e, $10, $12, $4c, $4e, $50, $52
 
 charpos:
 .byte $2e, $00, $02, $04, $06, $08, $0a, $0c, $0e, $20, $22, $24, $26, $28, $2a, $2c
@@ -597,7 +803,7 @@ movecursor:
   tax
   lda $0313
   jsr mul16
-  adc #71
+  adc #87;71
   tay
   stx $0207
   stx $020f
@@ -668,9 +874,10 @@ nmi:
   lda #$02
   sta $4014
   lda $1a
-  beq skiptileswap
+  bne :+
+  jmp skiptileswap
 ;tile swapping routine
-  lda $10; X = tile number, Y = lsb of nametable address
+ :lda $10; X = tile number, Y = lsb of nametable address
   sta $2006
   lda $11
   tay
@@ -718,24 +925,41 @@ nmi:
   inx
   stx $2007
 ;first attribute table entry
-  lda #$23
-  ldx $16
-  ldy $18
-  sta $2006
-  stx $2006
-  sty $2007
+;  lda #$23
+;  ldx $16
+;  ldy $18
+;  sta $2006
+;  stx $2006
+;  sty $2007
 ;second attribute table entry
-  ldx $17
-  ldy $19
-  sta $2006
+;  ldx $17
+;  ldy $19
+;  sta $2006
+;  stx $2006
+;  sty $2007
+;  lda #$00; Reset scroll register due to shared internal register with $2006
+;  sta $2005
+;  sta $2005
+  ldx #$23
+  ldy #$db
   stx $2006
-  sty $2007
+  sty $2006
+  lda $16
+  sta $2007
+  lda $17
+  sta $2007
+  ldy #$e3
+  stx $2006
+  sty $2006
+  lda $18
+  sta $2007
+  lda $19
+  sta $2007
   lda #$00; Reset scroll register due to shared internal register with $2006
   sta $2005
   sta $2005
-skiptileswap:
-  lda #$00
   sta $1a; Clear input lock
+skiptileswap:
   pla
   tay
   pla
