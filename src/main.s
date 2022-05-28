@@ -29,6 +29,28 @@ nametable:
 ;mytiles_chr:
 ;  .incbin "15tile.chr"
 
+;Variables
+;zero page
+;$00-$01: temp
+;$02-$03: controller input
+;$04-$05: temp variables for buttona routine
+;$06-$07: array indices in $0300 of blocks to swap
+;$08-$09: the numbers those blocks actually contain
+;$10-$11: Nametable address of first block to swap
+;$12-$13: Nametable address of second block to swap
+;$14: Character to be swapped into first block
+;$15: Character to be swapped into second block
+;$16-$19: Copy of attribute table entries $23db, $23dc, $23e3, and $23e4 in nametable
+;$1a: flag for nmi block swap operation (>$00 = swap)
+
+;page $03
+;$00 - 0f: tile number at position on board (row-major) (hole = 0)
+;$10: x position of hole
+;$11: y position of hole
+;$12: x position of cursor ($00 - $03)
+;$13: y position of cursor ($00 - $03)
+;$14: button pressed flag
+
 ; Initial State
 ; 13 2  10 3
 ; 1  12 8  4
@@ -247,32 +269,6 @@ setoamcopy:
   sta $0213
   rts
 
-;Variables
-;zero page
-;$00-$01: temp
-;$02-$03: controller input
-;$04-$05: temp variables for buttona routine
-;$06-$07: array indices in $0300 of blocks to swap
-;$08-$09: the numbers those blocks actually contain
-;$10-$11: Nametable address of first block to swap
-;$12-$13: Nametable address of second block to swap
-;$14: Character to be swapped into first block
-;$15: Character to be swapped into second block
-;$16-$19: Copy of $23db, $23dc, $23e3, and $23e4 in nametable
-;$16: lsB of first attribute table entry to be changed
-;$17: lsB of second attribute table entry to be changed
-;$18: new value of first attribute table entry
-;$19: new value of second attribute table entry
-;$1a: flag for nmi block swap operation (>$00 = swap)
-
-;page $03
-;$00 - 0f: tile number at position on board (row-major) (hole = 0)
-;$10: x position of hole
-;$11: y position of hole
-;$12: x position of cursor ($00 - $03)
-;$13: y position of cursor ($00 - $03)
-;$14: button pressed flag
-
 initvars:
   lda #13
   sta $0300
@@ -332,6 +328,270 @@ initvars:
   sty $0311
   rts
 
+gettoplefttile:
+  cmp #$00
+  bne :+
+  lda #$2e
+  rts
+ :sec
+  sbc #$01
+  clc
+  rol
+  cmp #$10
+  bcc :+ ;branch if A < $10
+  clc
+  adc #$10
+ :rts
+
+fillnametablespace:
+  lda #$21
+  sta $2006
+  lda #$8c
+  sta $2006
+  ldx #$00
+ :lda $0300, x
+  jsr gettoplefttile
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  lda #$21
+  sta $2006
+  lda #$ac
+  sta $2006
+  ldx #$00
+ :lda $0300, x
+  jsr gettoplefttile
+  clc
+  adc #$10
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  
+  lda #$21
+  sta $2006
+  lda #$cc
+  sta $2006
+  ldx #$00
+ :lda $0304, x
+  jsr gettoplefttile
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  lda #$21
+  sta $2006
+  lda #$ec
+  sta $2006
+  ldx #$00
+ :lda $0304, x
+  jsr gettoplefttile
+  clc
+  adc #$10
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  
+  lda #$22
+  sta $2006
+  lda #$0c
+  sta $2006
+  ldx #$00
+ :lda $0308, x
+  jsr gettoplefttile
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  lda #$22
+  sta $2006
+  lda #$2c
+  sta $2006
+  ldx #$00
+ :lda $0308, x
+  jsr gettoplefttile
+  clc
+  adc #$10
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  
+  lda #$22
+  sta $2006
+  lda #$4c
+  sta $2006
+  ldx #$00
+ :lda $030c, x
+  jsr gettoplefttile
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  lda #$22
+  sta $2006
+  lda #$6c
+  sta $2006
+  ldx #$00
+ :lda $030c, x
+  jsr gettoplefttile
+  clc
+  adc #$10
+  sta $2007
+  clc
+  adc #$01
+  sta $2007
+  inx
+  cpx #$04
+  bcc :-
+  
+  rts
+
+getcolour:
+  cmp #$00
+  bne :+
+  lda #$00
+  rts
+ :clc
+  ror
+  bcs :+
+  lda #%00000001
+  rts
+ :lda #%00000010
+  rts
+
+fillattributetablespace:
+  lda #$00
+  sta $1b
+  lda $0300
+  jsr getcolour
+  ora $1b
+  sta $1b
+  lda $0301
+  jsr getcolour
+  jsr mul4
+  ora $1b
+  sta $1b
+  lda $0304
+  jsr getcolour
+  jsr mul16
+  ora $1b
+  sta $1b
+  lda $0305
+  jsr getcolour
+  jsr mul64
+  ora $1b
+  sta $1b
+  sta $16
+  lda #$23
+  sta $2006
+  lda #$db
+  sta $2006
+  lda $1b
+  sta $2007
+  
+  lda #$00
+  sta $1b
+  lda $0302
+  jsr getcolour
+  ora $1b
+  sta $1b
+  lda $0303
+  jsr getcolour
+  jsr mul4
+  ora $1b
+  sta $1b
+  lda $0306
+  jsr getcolour
+  jsr mul16
+  ora $1b
+  sta $1b
+  lda $0307
+  jsr getcolour
+  jsr mul64
+  ora $1b
+  sta $1b
+  sta $17
+  sta $2007
+  
+  lda #$00
+  sta $1b
+  lda $0308
+  jsr getcolour
+  ora $1b
+  sta $1b
+  lda $0309
+  jsr getcolour
+  jsr mul4
+  ora $1b
+  sta $1b
+  lda $030c
+  jsr getcolour
+  jsr mul16
+  ora $1b
+  sta $1b
+  lda $030d
+  jsr getcolour
+  jsr mul64
+  ora $1b
+  sta $1b
+  sta $18
+  lda #$23
+  sta $2006
+  lda #$e3
+  sta $2006
+  lda $1b
+  sta $2007
+  
+  lda #$00
+  sta $1b
+  lda $030a
+  jsr getcolour
+  ora $1b
+  sta $1b
+  lda $030b
+  jsr getcolour
+  jsr mul4
+  ora $1b
+  sta $1b
+  lda $030e
+  jsr getcolour
+  jsr mul16
+  ora $1b
+  sta $1b
+  lda $030f
+  jsr getcolour
+  jsr mul64
+  ora $1b
+  sta $1b
+  sta $19
+  sta $2007
+  
+  rts
+
 test:
   lda #$21
   sta $10
@@ -359,6 +619,8 @@ start:
   jsr clearoamcopy
   jsr setoamcopy
   jsr initvars
+  jsr fillnametablespace
+  jsr fillattributetablespace
   ;jsr test
   lda $00; set scroll
   sta $2005
@@ -414,8 +676,8 @@ readcontroller:; Adapted from https://www.nesdev.org/wiki/Controller_reading_cod
   bcc :-
   rts
 
-; Button assignment:	7   6     5        4     3     2      1      0
-;			A | B | Select | Start | Up | Down | Left | Right
+; Button assignment: 7   6     5        4     3     2      1      0
+;                    A | B | Select | Start | Up | Down | Left | Right
 
 buttonright:
   lda $0314
