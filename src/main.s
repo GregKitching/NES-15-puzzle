@@ -50,6 +50,7 @@ nametable:
 ;$12: x position of cursor ($00 - $03)
 ;$13: y position of cursor ($00 - $03)
 ;$14: button pressed flag
+;$20: move sound counter
 
 ; Initial State
 ; 13 2  10 3
@@ -80,6 +81,7 @@ reset:
   ;jsr copypatterntable
   jsr copynametable
   jsr setpalettes
+  jsr initializeapu
   jmp start
 
 copypatterntable:
@@ -165,6 +167,20 @@ setpalettes:
   sta $2007
   lda #$2a
   sta $2007
+  rts
+
+initializeapu:
+  lda #%00110000
+  sta $4000
+  sta $4004
+  sta $400c
+  lda #%10000000
+  sta $4008
+  ;sta $4017
+  lda #%00001111
+  sta $4015
+  lda #%01000000
+  sta $4017
   rts
 
 setattributetable:
@@ -689,6 +705,7 @@ buttonright:
   lda #$01
   sta $0314
   jsr movecursor
+  jsr playmovenote
   :jmp loop
 
 buttonleft:
@@ -700,6 +717,7 @@ buttonleft:
   lda #$01
   sta $0314
   jsr movecursor
+  jsr playmovenote
   :jmp loop
 
 buttondown:
@@ -712,6 +730,7 @@ buttondown:
   lda #$01
   sta $0314
   jsr movecursor
+  jsr playmovenote
   :jmp loop
 
 buttonup:
@@ -723,6 +742,7 @@ buttonup:
   lda #$01
   sta $0314
   jsr movecursor
+  jsr playmovenote
   :jmp loop
 
 buttona:
@@ -778,6 +798,32 @@ xnotone:
 exit:
   jmp loop
 
+playmovenote:
+  lda #$32
+  sta $0320
+  lda #$01
+  sta $4015
+  lda #$fd
+  sta $4002
+  lda #$00
+  sta $4003
+  lda #%10001111
+  sta $4000
+  rts
+
+playswapnote:
+  lda #$04
+  sta $0320
+  lda #%00001000
+  sta $4015
+  lda #%10001111
+  sta $400e
+  lda #$00
+  sta $400f
+  lda #%00111111
+  sta $400c
+  rts
+
 swaphole:
   jsr getarrayindexcursor
   sta $06
@@ -818,6 +864,7 @@ swaphole:
   jsr swapattributetables
   lda #$01; set swap flag
   sta $1a
+  jsr playswapnote
   jmp loop
 
 ;$00 -> $16 xxxxxx..
@@ -1123,6 +1170,17 @@ div2:
   ror a
   rts
 
+movenotelogic:
+  lda $0320
+  beq :+
+  dec $0320
+  bne :+
+  lda #%00110000
+  sta $4000
+  lda #$00
+  sta $4015
+ :rts
+
 nmi:
   php
   pha
@@ -1222,6 +1280,7 @@ nmi:
   sta $2005
   sta $1a; Clear input lock
 skiptileswap:
+  jsr movenotelogic
   pla
   tay
   pla
